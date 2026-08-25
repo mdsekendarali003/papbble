@@ -86,11 +86,12 @@ function makePayload(email) {
 
 }
 
-async function createSubscription(email) {
+async function createSubscription(email, signal) {
   const response = await fetch(API_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(makePayload(email)),
+    signal,
   });
 
   const body = await response.text();

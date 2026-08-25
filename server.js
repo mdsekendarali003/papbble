@@ -4,11 +4,24 @@ const path = require('node:path');
 const { createSubscription } = require('./email_list');
 
 const indexPath = path.join(__dirname, 'index.html');
-const delay = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+function delay(milliseconds, signal) {
+  return new Promise((resolve) => {
+    if (signal?.aborted) return resolve();
+    const timer = setTimeout(resolve, milliseconds);
+    signal?.addEventListener('abort', () => {
+      clearTimeout(timer);
+      resolve();
+    }, { once: true });
+  });
+}
 
 function sendJson(response, status, data) {
   response.writeHead(status, { 'Content-Type': 'application/json' });
   response.end(JSON.stringify(data));
+}
+
+function sendLogEvent(response, event) {
+  response.write(`${JSON.stringify(event)}\n`);
 }
 
 const server = http.createServer(async (request, response) => {
@@ -32,17 +45,33 @@ const server = http.createServer(async (request, response) => {
   if (!Array.isArray(emails) || !emails.length || !emails.every((email) => typeof email === 'string')) {
     return sendJson(response, 400, { error: 'Provide a non-empty emails array.' });
   }
-  const results = [];
+  response.writeHead(200, {
+    'Content-Type': 'application/x-ndjson; charset=utf-8',
+    'Cache-Control': 'no-cache, no-transform',
+    Connection: 'keep-alive',
+  });
+  response.flushHeaders?.();
+  const controller = new AbortController();
+  response.on('close', () => controller.abort());
+
   for (const [index, email] of emails.entries()) {
+    if (controller.signal.aborted) break;
     try {
-      const result = await createSubscription(email);
-      results.push({ email, ok: true, status: result.status });
+      const result = await createSubscription(email, controller.signal);
+      if (controller.signal.aborted) break;
+      sendLogEvent(response, { type: 'result', email, ok: true, status: result.status });
     } catch (error) {
-      results.push({ email, ok: false, error: error.message });
+      if (controller.signal.aborted) break;
+      sendLogEvent(response, { type: 'result', email, ok: false, error: error.message });
     }
-    if (index < emails.length - 1) await delay(5_000);
+    if (index < emails.length - 1) {
+      sendLogEvent(response, { type: 'wait', message: 'Waiting 5 seconds before the next request...' });
+      await delay(5_000, controller.signal);
+    }
   }
-  sendJson(response, 200, { results });
+  if (controller.signal.aborted) return;
+  sendLogEvent(response, { type: 'complete' });
+  response.end();
 });
 
 const port = Number(process.env.PORT) || 3000;
