@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pabbly subscription batch</title>
+    <style>
+      :root { color-scheme: dark; font-family: Inter, system-ui, sans-serif; }
+      body { background: #101418; color: #e8edf2; margin: 0; padding: 32px 16px; }
+      main { max-width: 760px; margin: auto; }
+      h1 { margin: 0 0 8px; } p { color: #aebbc7; }
+      label { display: block; font-weight: 650; margin: 20px 0 8px; }
+      input, textarea { box-sizing: border-box; width: 100%; color: inherit; background: #192129; border: 1px solid #3a4753; border-radius: 8px; padding: 11px; font: inherit; }
+      textarea { min-height: 170px; resize: vertical; }
+      .actions { display: flex; gap: 10px; align-items: center; margin-top: 20px; flex-wrap: wrap; }
+      button { cursor: pointer; border: 0; border-radius: 8px; padding: 11px 15px; font: inherit; font-weight: 700; background: #3b82f6; color: white; }
+      button.secondary { background: #35424e; } button:disabled { opacity: .5; cursor: not-allowed; }
+      .confirm { display: flex; gap: 8px; align-items: center; font-size: .9rem; color: #c8d3dc; }
+      .confirm input { width: auto; }
+      #summary { margin: 20px 0 10px; font-weight: 650; }
+      #emails, #log { border: 1px solid #303d48; border-radius: 8px; background: #151c22; padding: 12px; }
+      #emails { max-height: 220px; overflow: auto; } #emails li { margin: 5px 0; }
+      #log { white-space: pre-wrap; min-height: 80px; max-height: 250px; overflow: auto; font: .9rem ui-monospace, monospace; }
+      .success { color: #64d89b; } .error { color: #ff8585; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Subscription batch</h1>
+      <p>Enter one email per line or separate them with commas. Requests are sent one at a time, five seconds apart.</p>
+
+      <label for="emailInput">Email addresses</label>
+      <textarea id="emailInput" placeholder="first@example.com&#10;second@example.com"></textarea>
+
+      <div class="actions">
+        <button class="secondary" id="previewButton" type="button">Preview emails</button>
+        <label class="confirm"><input id="confirm" type="checkbox" /> I confirm I am authorized to create these subscriptions.</label>
+        <button id="sendButton" type="button" disabled>Send requests</button>
+      </div>
+
+      <div id="summary">No emails loaded.</div>
+      <ol id="emails"></ol>
+      <label for="log">Request log</label>
+      <div id="log" aria-live="polite">Waiting for input.</div>
+    </main>
+
+    <script>
+      const emailInput = document.querySelector('#emailInput');
+      const previewButton = document.querySelector('#previewButton');
+      const sendButton = document.querySelector('#sendButton');
+      const confirm = document.querySelector('#confirm');
+      const summary = document.querySelector('#summary');
+      const emailsElement = document.querySelector('#emails');
+      const log = document.querySelector('#log');
+
+      function emails() {
+        return [...new Set(emailInput.value.split(/[\n,]+/).map((email) => email.trim()).filter(Boolean))];
+      }
+
+      function renderPreview() {
+        const list = emails();
+        const invalid = list.filter((email) => !/^\S+@\S+\.\S+$/.test(email));
+        summary.textContent = `${list.length} unique email${list.length === 1 ? '' : 's'} loaded${invalid.length ? ` (${invalid.length} appear invalid)` : ''}.`;
+        emailsElement.replaceChildren(...list.map((email) => {
+          const item = document.createElement('li');
+          item.textContent = email;
+          return item;
+        }));
+        sendButton.disabled = !list.length || invalid.length > 0 || !confirm.checked;
+        return list;
+      }
+
+      function appendLog(message, type = '') {
+        const line = document.createElement('div');
+        line.className = type;
+        line.textContent = message;
+        log.append(line);
+        log.scrollTop = log.scrollHeight;
+      }
+
+      previewButton.addEventListener('click', renderPreview);
+      emailInput.addEventListener('input', renderPreview);
+      confirm.addEventListener('change', renderPreview);
+
+      sendButton.addEventListener('click', async () => {
+        const list = renderPreview();
+        if (!confirm.checked) return alert('Confirm authorization before sending requests.');
+
+        sendButton.disabled = true;
+        previewButton.disabled = true;
+        log.replaceChildren();
+        appendLog(`Sending ${list.length} request(s) sequentially...`);
+        try {
+          const response = await fetch('/api/subscriptions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ emails: list }),
+          });
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+          for (const result of data.results) {
+            appendLog(
+              result.ok ? `${result.email}: HTTP ${result.status}` : `${result.email}: ${result.error}`,
+              result.ok ? 'success' : 'error',
+            );
+          }
+        } catch (error) {
+          appendLog(error.message, 'error');
+        }
+        appendLog('Finished.');
+        previewButton.disabled = false;
+        renderPreview();
+      });
+    </script>
+  </body>
+</html>
