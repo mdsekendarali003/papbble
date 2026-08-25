@@ -15,8 +15,16 @@ const emailList = [
 
 const delay = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
+function nameFromEmail(email) {
+  const localPart = email.split('@')[0].split('+')[0].replace(/\d+$/, '').replace(/[._-]+/g, ' ').trim();
+  const honorificMatch = localPart.match(/^(md|mr|mrs|ms|dr)([a-z].*)$/i);
+  const words = honorificMatch ? [honorificMatch[1], honorificMatch[2]] : localPart.split(/\s+/);
+  const titleCase = (word) => word ? word[0].toUpperCase() + word.slice(1).toLowerCase() : '';
+  return { first_name: titleCase(words[0]), last_name: words.slice(1).map(titleCase).join(' ') };
+}
+
 function makePayload(email) {
-  return {
+  const payload = {
     account_additional_number_require: false,
     account_additional_number_status: false,
     account_company_require: false,
@@ -41,18 +49,17 @@ function makePayload(email) {
 
     card: CARD_TOKEN,
 
-    country: "IN",
+    country: "US",
     coupon_code: "",
-    dial_code: "+91",
+    dial_code: "+1",
     email,
-    first_name: "eqe",
+    ...nameFromEmail(email),
     funnel: [],
 
     gateway_id: "6a8dc7e381882a66eed48832",
     gateway_type: "6a8dc7e381882a66eed48832",
     hostname: "https://payments.pabbly.com",
 
-    last_name: "qeqe",
     plan_id: "6a8dc8ad4f5ad067036afa04",
     quantity: 1,
 
@@ -73,7 +80,9 @@ function makePayload(email) {
     state: "Andaman and Nicobar Islands",
     state_code: "AN",
     _csrf: ""
-  }
+  };
+
+  return payload;
 
 }
 
@@ -116,4 +125,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { createSubscription };
+module.exports = { createSubscription, nameFromEmail };

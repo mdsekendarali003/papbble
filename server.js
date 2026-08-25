@@ -32,7 +32,6 @@ const server = http.createServer(async (request, response) => {
   if (!Array.isArray(emails) || !emails.length || !emails.every((email) => typeof email === 'string')) {
     return sendJson(response, 400, { error: 'Provide a non-empty emails array.' });
   }
-
   const results = [];
   for (const [index, email] of emails.entries()) {
     try {
@@ -46,4 +45,5 @@ const server = http.createServer(async (request, response) => {
   sendJson(response, 200, { results });
 });
 
-server.listen(3000, () => console.log('Open http://localhost:3000'));
+const port = Number(process.env.PORT) || 3000;
+server.listen(port, '0.0.0.0', () => console.log(`Open http://localhost:${port}`));

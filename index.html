@@ -7,7 +7,7 @@
     <style>
       :root { color-scheme: dark; font-family: Inter, system-ui, sans-serif; }
       body { background: #101418; color: #e8edf2; margin: 0; padding: 32px 16px; }
-      main { max-width: 760px; margin: auto; }
+      main { max-width: 760px; margin: 0 auto; }
       h1 { margin: 0 0 8px; } p { color: #aebbc7; }
       label { display: block; font-weight: 650; margin: 20px 0 8px; }
       input, textarea { box-sizing: border-box; width: 100%; color: inherit; background: #192129; border: 1px solid #3a4753; border-radius: 8px; padding: 11px; font: inherit; }
@@ -18,10 +18,17 @@
       .confirm { display: flex; gap: 8px; align-items: center; font-size: .9rem; color: #c8d3dc; }
       .confirm input { width: auto; }
       #summary { margin: 20px 0 10px; font-weight: 650; }
+      .workspace { display: block; }
       #emails, #log { border: 1px solid #303d48; border-radius: 8px; background: #151c22; padding: 12px; }
       #emails { max-height: 220px; overflow: auto; } #emails li { margin: 5px 0; }
-      #log { white-space: pre-wrap; min-height: 80px; max-height: 250px; overflow: auto; font: .9rem ui-monospace, monospace; }
+      .terminal { position: fixed; inset: 0 0 0 auto; width: min(38vw, 460px); height: 100vh; border-left: 1px solid #354654; overflow: hidden; background: #0b0f13; box-shadow: -14px 0 35px #0004; }
+      .terminal-bar { display: flex; align-items: center; gap: 7px; padding: 11px 13px; background: #1b252e; border-bottom: 1px solid #354654; font: 600 .8rem ui-monospace, monospace; color: #bdc9d3; }
+      .terminal-dot { width: 10px; height: 10px; border-radius: 50%; background: #ff5f57; }
+      .terminal-dot:nth-child(2) { background: #febc2e; } .terminal-dot:nth-child(3) { background: #28c840; }
+      #log { white-space: pre-wrap; min-height: 0; height: calc(100vh - 44px); overflow: auto; border: 0; border-radius: 0; background: #0b0f13; font: .86rem ui-monospace, SFMono-Regular, Menlo, monospace; line-height: 1.55; }
       .success { color: #64d89b; } .error { color: #ff8585; }
+      @media (min-width: 801px) { body { padding-right: calc(min(38vw, 460px) + 32px); } }
+      @media (max-width: 800px) { .terminal { position: static; width: auto; height: auto; margin-top: 24px; border: 1px solid #354654; border-radius: 10px; } #log { min-height: 220px; height: auto; max-height: 360px; } }
     </style>
   </head>
   <body>
@@ -29,19 +36,26 @@
       <h1>Subscription batch</h1>
       <p>Enter one email per line or separate them with commas. Requests are sent one at a time, five seconds apart.</p>
 
-      <label for="emailInput">Email addresses</label>
-      <textarea id="emailInput" placeholder="first@example.com&#10;second@example.com"></textarea>
+      <div class="workspace">
+        <section>
+          <label for="emailInput">Email addresses</label>
+          <textarea id="emailInput" placeholder="first@example.com&#10;second@example.com"></textarea>
 
-      <div class="actions">
-        <button class="secondary" id="previewButton" type="button">Preview emails</button>
-        <label class="confirm"><input id="confirm" type="checkbox" /> I confirm I am authorized to create these subscriptions.</label>
-        <button id="sendButton" type="button" disabled>Send requests</button>
+          <div class="actions">
+            <button class="secondary" id="previewButton" type="button">Preview emails</button>
+            <label class="confirm"><input id="confirm" type="checkbox" /> I confirm I am authorized to create these subscriptions.</label>
+            <button id="sendButton" type="button" disabled>Send requests</button>
+          </div>
+
+          <div id="summary">No emails loaded.</div>
+          <ol id="emails"></ol>
+        </section>
+
+        <aside class="terminal">
+          <div class="terminal-bar"><span class="terminal-dot"></span><span class="terminal-dot"></span><span class="terminal-dot"></span>request-log</div>
+          <div id="log" aria-live="polite">$ Waiting for input.</div>
+        </aside>
       </div>
-
-      <div id="summary">No emails loaded.</div>
-      <ol id="emails"></ol>
-      <label for="log">Request log</label>
-      <div id="log" aria-live="polite">Waiting for input.</div>
     </main>
 
     <script>
@@ -57,13 +71,22 @@
         return [...new Set(emailInput.value.split(/[\n,]+/).map((email) => email.trim()).filter(Boolean))];
       }
 
+      function nameFromEmail(email) {
+        const localPart = email.split('@')[0].split('+')[0].replace(/\d+$/, '').replace(/[._-]+/g, ' ').trim();
+        const match = localPart.match(/^(md|mr|mrs|ms|dr)([a-z].*)$/i);
+        const words = match ? [match[1], match[2]] : localPart.split(/\s+/);
+        const titleCase = (word) => word ? word[0].toUpperCase() + word.slice(1).toLowerCase() : '';
+        return { first_name: titleCase(words[0]), last_name: words.slice(1).map(titleCase).join(' ') };
+      }
+
       function renderPreview() {
         const list = emails();
         const invalid = list.filter((email) => !/^\S+@\S+\.\S+$/.test(email));
         summary.textContent = `${list.length} unique email${list.length === 1 ? '' : 's'} loaded${invalid.length ? ` (${invalid.length} appear invalid)` : ''}.`;
         emailsElement.replaceChildren(...list.map((email) => {
           const item = document.createElement('li');
-          item.textContent = email;
+          const { first_name, last_name } = nameFromEmail(email);
+          item.textContent = `${email} — ${first_name} ${last_name}`.trim();
           return item;
         }));
         sendButton.disabled = !list.length || invalid.length > 0 || !confirm.checked;
