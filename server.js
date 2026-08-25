@@ -37,13 +37,19 @@ const server = http.createServer(async (request, response) => {
   let raw = '';
   for await (const chunk of request) raw += chunk;
   let emails;
+  let settings = {};
   try {
-    ({ emails } = JSON.parse(raw));
+    ({ emails, settings = {} } = JSON.parse(raw));
   } catch {
     return sendJson(response, 400, { error: 'Invalid JSON body.' });
   }
   if (!Array.isArray(emails) || !emails.length || !emails.every((email) => typeof email === 'string')) {
     return sendJson(response, 400, { error: 'Provide a non-empty emails array.' });
+  }
+  const allowedSettings = ['gateway_id', 'gateway_type', 'plan_id'];
+  if (!settings || Array.isArray(settings) || typeof settings !== 'object' ||
+      Object.keys(settings).some((key) => !allowedSettings.includes(key) || typeof settings[key] !== 'string' || !settings[key].trim())) {
+    return sendJson(response, 400, { error: 'Invalid payment settings.' });
   }
   response.writeHead(200, {
     'Content-Type': 'application/x-ndjson; charset=utf-8',
@@ -57,7 +63,7 @@ const server = http.createServer(async (request, response) => {
   for (const [index, email] of emails.entries()) {
     if (controller.signal.aborted) break;
     try {
-      const result = await createSubscription(email, controller.signal);
+      const result = await createSubscription(email, controller.signal, settings);
       if (controller.signal.aborted) break;
       sendLogEvent(response, { type: 'result', email, ok: true, status: result.status });
     } catch (error) {

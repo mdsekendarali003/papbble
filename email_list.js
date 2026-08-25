@@ -7,6 +7,11 @@
 
 const API_URL = 'https://payments.pabbly.com/api/subscription';
 const CARD_TOKEN = "231d3677c777ac89333c6f3760af2078:2cbb6606931492be310cb53154715003046594300fc7f9e737e2b093ffe0c342dacc3b605890c7f6df95f697618d40b00f8fdd36da0e0f38fd547f55ca17636b181f57e0309fddabf698688fc1d9cda5";
+const DEFAULT_PAYMENT_SETTINGS = {
+  gateway_id: '6a8dec8781882a66eed4a171',
+  gateway_type: '6a8dec8781882a66eed4a171',
+  plan_id: '6a8ded024f5ad067036b1382',
+};
 
 // Add or remove recipient email addresses here.
 const emailList = [
@@ -23,7 +28,7 @@ function nameFromEmail(email) {
   return { first_name: titleCase(words[0]), last_name: words.slice(1).map(titleCase).join(' ') };
 }
 
-function makePayload(email) {
+function makePayload(email, settings = {}) {
   const payload = {
     account_additional_number_require: false,
     account_additional_number_status: false,
@@ -56,11 +61,11 @@ function makePayload(email) {
     ...nameFromEmail(email),
     funnel: [],
 
-    gateway_id: "6a8dc7e381882a66eed48832",
-    gateway_type: "6a8dc7e381882a66eed48832",
+    gateway_id: DEFAULT_PAYMENT_SETTINGS.gateway_id,
+    gateway_type: DEFAULT_PAYMENT_SETTINGS.gateway_type,
     hostname: "https://payments.pabbly.com",
 
-    plan_id: "6a8dc8ad4f5ad067036afa04",
+    plan_id: DEFAULT_PAYMENT_SETTINGS.plan_id,
     quantity: 1,
 
     select_additional_number_dial_code: "+91",
@@ -82,15 +87,15 @@ function makePayload(email) {
     _csrf: ""
   };
 
-  return payload;
+  return { ...payload, ...settings, email, card: CARD_TOKEN };
 
 }
 
-async function createSubscription(email, signal) {
+async function createSubscription(email, signal, settings) {
   const response = await fetch(API_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(makePayload(email)),
+    body: JSON.stringify(makePayload(email, settings)),
     signal,
   });
 

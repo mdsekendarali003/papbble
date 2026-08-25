@@ -27,6 +27,8 @@
       .terminal-dot:nth-child(2) { background: #febc2e; } .terminal-dot:nth-child(3) { background: #28c840; }
       #log { white-space: pre-wrap; min-height: 0; height: calc(100vh - 44px); overflow: auto; border: 0; border-radius: 0; background: #0b0f13; font: .86rem ui-monospace, SFMono-Regular, Menlo, monospace; line-height: 1.55; }
       .success { color: #64d89b; } .error { color: #ff8585; }
+      dialog { color: #e8edf2; background: #151c22; border: 1px solid #435566; border-radius: 12px; width: min(460px, calc(100vw - 32px)); padding: 22px; box-shadow: 0 20px 70px #0009; }
+      dialog::backdrop { background: #000a; } dialog h2 { margin: 0; } .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
       @media (min-width: 801px) { body { padding-right: calc(min(38vw, 460px) + 32px); } }
       @media (max-width: 800px) { .terminal { position: static; width: auto; height: auto; margin-top: 24px; border: 1px solid #354654; border-radius: 10px; } #log { min-height: 220px; height: auto; max-height: 360px; } }
     </style>
@@ -43,6 +45,7 @@
 
           <div class="actions">
             <button class="secondary" id="previewButton" type="button">Preview emails</button>
+            <button class="secondary" id="settingsButton" type="button">Settings</button>
             <button class="secondary" id="stopButton" type="button" disabled>Stop sending</button>
             <label class="confirm"><input id="confirm" type="checkbox" /> I confirm I am authorized to create these subscriptions.</label>
             <button id="sendButton" type="button" disabled>Send requests</button>
@@ -57,18 +60,58 @@
           <div id="log" aria-live="polite">$ Waiting for input.</div>
         </aside>
       </div>
+
+      <dialog id="settingsModal">
+        <form id="settingsForm">
+          <h2>Payment settings</h2>
+          <label for="gatewayId">Gateway ID</label>
+          <input id="gatewayId" required />
+          <label for="gatewayType">Gateway type</label>
+          <input id="gatewayType" required />
+          <label for="planId">Plan ID</label>
+          <input id="planId" required />
+          <div class="modal-actions">
+            <button class="secondary" id="cancelSettings" type="button">Cancel</button>
+            <button type="submit">Save settings</button>
+          </div>
+        </form>
+      </dialog>
     </main>
 
     <script>
       const emailInput = document.querySelector('#emailInput');
       const previewButton = document.querySelector('#previewButton');
+      const settingsButton = document.querySelector('#settingsButton');
       const stopButton = document.querySelector('#stopButton');
       const sendButton = document.querySelector('#sendButton');
       const confirm = document.querySelector('#confirm');
       const summary = document.querySelector('#summary');
       const emailsElement = document.querySelector('#emails');
       const log = document.querySelector('#log');
+      const settingsModal = document.querySelector('#settingsModal');
+      const settingsForm = document.querySelector('#settingsForm');
+      const cancelSettings = document.querySelector('#cancelSettings');
+      const settingInputs = {
+        gateway_id: document.querySelector('#gatewayId'),
+        gateway_type: document.querySelector('#gatewayType'),
+        plan_id: document.querySelector('#planId'),
+      };
+      const defaultSettings = {
+        gateway_id: '6a8dec8781882a66eed4a171',
+        gateway_type: '6a8dec8781882a66eed4a171',
+        plan_id: '6a8ded024f5ad067036b1382',
+      };
       let activeRequest = null;
+
+      function getSettings() {
+        try { return { ...defaultSettings, ...JSON.parse(localStorage.getItem('paymentSettings')) }; }
+        catch { return defaultSettings; }
+      }
+
+      function populateSettings() {
+        const settings = getSettings();
+        for (const [key, input] of Object.entries(settingInputs)) input.value = settings[key];
+      }
 
       function emails() {
         return [...new Set(emailInput.value.split(/[\n,]+/).map((email) => email.trim()).filter(Boolean))];
@@ -134,6 +177,15 @@
       previewButton.addEventListener('click', renderPreview);
       emailInput.addEventListener('input', renderPreview);
       confirm.addEventListener('change', renderPreview);
+      settingsButton.addEventListener('click', () => { populateSettings(); settingsModal.showModal(); });
+      cancelSettings.addEventListener('click', () => settingsModal.close());
+      settingsForm.addEventListener('submit', (event) => {
+        event.preventDefault();
+        const settings = Object.fromEntries(Object.entries(settingInputs).map(([key, input]) => [key, input.value.trim()]));
+        localStorage.setItem('paymentSettings', JSON.stringify(settings));
+        settingsModal.close();
+        appendLog('Payment settings saved locally.');
+      });
       stopButton.addEventListener('click', () => {
         if (!activeRequest) return;
         appendLog('Stopping the current batch...');
@@ -155,7 +207,7 @@
           const response = await fetch('/api/subscriptions', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ emails: list }),
+            body: JSON.stringify({ emails: list, settings: getSettings() }),
             signal: activeRequest.signal,
           });
           if (!response.ok) {
